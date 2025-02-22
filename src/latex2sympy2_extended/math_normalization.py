@@ -1,9 +1,8 @@
 import re
 from dataclasses import dataclass
 from typing import Literal
-import logging
-
-logger = logging.getLogger(__name__)
+from typing import Optional
+from typing import Union
 
 @dataclass(frozen=True)
 class NormalizationConfig:
@@ -15,13 +14,13 @@ class NormalizationConfig:
     - malformed_operators: Fix malformed operators (sqrt, frac, etc.)
     - nits: Small formatting fixes (spaces, dots, etc.)
     - boxed: Extract content from boxed environments
-    - equations: Handle equation splitting and approximations (deprecated)
+    - equations: Handle equation splitting and approximations
     """
     basic_latex: bool = True
     units: bool = False
     malformed_operators: bool = False
     nits: bool = False
-    boxed: Literal["all", "last", "none"] = "all"
+    boxed: Union["all", "last", "none"] = "all"
     equations: bool = False
 
 # Compile all regex patterns once at module level
@@ -202,8 +201,8 @@ to_replace_patterns = [
     ("decimal_brace", r"\{\.", r"{0."),
     ("approx", r"\~\=", r"\approx"),
     ("comma", r"\s*\{\s*,\s*\}", r","),
-    ("and_or", r"(?<![a-zA-Z])(,?\s*(?:and|or))(?![a-zA-Z])", r","),
-    ("and_or_text", r"(,?\s*\\text{\s*(?:and|or)\s*})", r","),
+    ("and_or", r"(?<!\w)(?:and|or)(?!\w)", r";"),
+    ("and_or_text", r"(\\text{\s*(?:and|or)\s*})", r";"),
     ("backslash_space", r"(?<!\\)\\\s", r" "),
     # Empty text
     ("infinity", r"infinity", r"\infty"),
@@ -255,15 +254,15 @@ def replace(match):
 def replace_in_latex(text: str) -> str:
     return to_replace_regex.sub(replace, text)
 
-VALID_SEPARATOR_PATTERN = re.compile(r'^.{0,70}?$')
-def extract_boxed_content(text: str, mode: Literal["last", "all"] = "last") -> str:
+VALID_SEPARATOR_PATTERN = re.compile(r'^\s*(?:and|or|,)\s*$')
+def extract_boxed_content(text: str, mode: Union["last", "all"] = "last") -> str:
     """
     Find and extract all \\boxed{...} or \\fbox{...} elements from a string, searching from right to left.
     If mode is "last", return content up to the last valid separator.
     If mode is "all", return all boxed contents joined by commas.
     """
     
-    def find_content_boundaries(text: str, opening_brace_pos: int, max_pos: int) -> tuple[int, int] | None:
+    def find_content_boundaries(text: str, opening_brace_pos: int, max_pos: int) -> Union[int, int, None]:
         # Start searching for closing brace from the opening brace position
         i = opening_brace_pos
         num_left_braces_open = 1  # We start after the opening brace
@@ -465,7 +464,7 @@ def normalize_latex(text: str, config: NormalizationConfig) -> str:
             text = command_slash_fix_regex.sub(r"\\", text)
     
     if config.equations:
-        logger.warning("equations is deprecated, as it handled by the parser now")
+        
         # This is to ensure that a=1,b=2 is not splitted
         if not "," in text and not ";" in text:
             eq_parts = equation_split_regex.split(text)
